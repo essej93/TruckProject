@@ -13,7 +13,7 @@ out vec3 vColor;
 void main()
 {
 	// set vertex position
-    gl_Position =  vec4(aPosition, 1.0f);
+    gl_Position =  uModelMatrix * vec4(aPosition, 1.0f);
 
 	// set vertex shader output color 
 	// will be interpolated for each fragment

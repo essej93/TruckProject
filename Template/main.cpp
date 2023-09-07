@@ -30,17 +30,43 @@ struct VertexColor
 };
 
 // defines initialiseVertices
-// global vertices vector
 void initialiseVertices();
 void initialiseWheels();
+
+// global vertices vector
 std::vector<GLfloat> vertices;
+
+// global variables
+float gTranslateSensitivity = 1.0f; // sense for translations
+float gRotateSensitivity = 3.0f; // sense for rotation of wheels
+
 
 // scene content
 ShaderProgram gShader;	// shader program object
 GLuint gVBO = 0;		// vertex buffer object identifier
 GLuint gVAO = 0;		// vertex array object identifier
 
+//model matrix
+std::map<std::string, glm::mat4> gModelMatrix;
 
+// frame stats
+float gFramerate = 60.0f;
+float gFrameTime = 1 / gFramerate;
+
+double currentFrameTime;
+double deltaTime;
+double lastFrameTime = glfwGetTime();
+
+// Tweak bar variables
+float trayRotateAngleTwBar; // rotate angle for tray
+glm::vec3 gBackgroundColour(0.0f); // set background colour
+bool gWireFrame = false; // wireframe on/off
+
+
+/*
+QUESTIONS:
+- If using the gScaleFactor for generating a circle, how do we then make it so it doesn't stretch when it rotates?
+- Currently the way i rotate the wheels and tray is by moving it back to the origin point 0.0, 0.0, 0.0, rotating it, then moving it back; is there a better way to move it? meaning just moving it based on where it's located */
 
 // generate vertices for a circle based on a radius and number of slices
 void generate_circle(const float radius, const float scale_factor, std::vector<GLfloat>& vertices, float centreX, float centreY, bool isRim)
@@ -102,8 +128,13 @@ static void init(GLFWwindow* window)
 
 	gShader.compileAndLink("truck.vert", "truck.frag");
 
-	initialiseVertices(); // initialises truck body vertices
+	// creating model matrix for objects i want to manipulate
+	gModelMatrix["Truck"] = glm::mat4(1.0f);
+	gModelMatrix["FrontWheel"] = glm::mat4(1.0f);
+	gModelMatrix["BackWheel"] = glm::mat4(1.0f);
+	gModelMatrix["Tray"] = glm::mat4(1.0f);
 
+	initialiseVertices(); // initialises truck body vertices
 
 
 	// create VBO and buffer the data
@@ -125,6 +156,70 @@ static void init(GLFWwindow* window)
 
 }
 
+// function used to update scene before render
+static void update_scene(GLFWwindow* window) {
+
+	// variables used for rotations/translations
+	static glm::vec3 truckMoveVec(0.0f);;
+	static glm::vec3 scaleVec(1.0f);
+	static float wheelRotateAngle = 0.0f;
+	
+
+	// keeps track of frameTime/deltatime
+	currentFrameTime = glfwGetTime();
+	deltaTime = currentFrameTime - lastFrameTime;
+	lastFrameTime = currentFrameTime;
+
+	float trayRotateAngle = -trayRotateAngleTwBar; // inverse of the TweakBar value
+
+	// updates background colour
+	glClearColor(gBackgroundColour.r, gBackgroundColour.g, gBackgroundColour.b, 1.0f);
+
+	if (glfwGetKey(window, GLFW_KEY_LEFT) == GLFW_PRESS) {
+		truckMoveVec.x -= gTranslateSensitivity * deltaTime;
+		wheelRotateAngle += gRotateSensitivity * deltaTime;
+	}
+	if (glfwGetKey(window, GLFW_KEY_RIGHT) == GLFW_PRESS) {
+		truckMoveVec.x += gTranslateSensitivity * deltaTime;
+		wheelRotateAngle -= gRotateSensitivity * deltaTime;
+	}
+
+
+	
+	// truck translation
+	gModelMatrix["Truck"] = glm::translate(truckMoveVec);
+
+
+	// variables used for tray rotation
+	glm::vec3 trayRotatePoint(0.4f, -0.5f, 0.0f);
+	glm::mat4 trayTranslation = glm::translate(trayRotatePoint);
+	glm::mat4 trayTranslationInverse = glm::translate(-trayRotatePoint);
+
+	// tray transformation
+	// moves tray to centre origin based on bottom right vertex, rotates it, moves it back then translates with the truck
+	gModelMatrix["Tray"] = gModelMatrix["Truck"] * trayTranslation * glm::rotate(glm::radians(trayRotateAngle), glm::vec3(0.0f, 0.0f, 1.0f)) * trayTranslationInverse * glm::scale(scaleVec);
+
+
+	// Variables used for front wheel rotation
+	glm::vec3 frontWheelRotatePoint(-0.275f, -0.525f, 0.0f);
+	glm::mat4 frontWheelTranslation = glm::translate(frontWheelRotatePoint);
+	glm::mat4 frontWheelTranslationInverse = glm::translate(-frontWheelRotatePoint);
+
+	// moves wheel to 0.0f, 0.0f, 0.0f, rotates it then moves it back to the correct position on the truck
+	gModelMatrix["FrontWheel"] = gModelMatrix["Truck"] *  frontWheelTranslation * glm::rotate(wheelRotateAngle, glm::vec3(0.0f, 0.0f, 1.0f)) * frontWheelTranslationInverse * glm::scale(scaleVec);
+
+	// Variables used for front wheel rotation
+	glm::vec3 backWheelRotatePoint(0.275f, -0.525f, 0.0f);
+	glm::mat4 backWheelTranslation = glm::translate(backWheelRotatePoint);
+	glm::mat4 backWheelTranslationInverse = glm::translate(-backWheelRotatePoint);
+
+	// moves wheel to 0.0f, 0.0f, 0.0f, rotates it then moves it back to the correct position on the truck
+	gModelMatrix["BackWheel"] = gModelMatrix["Truck"] * backWheelTranslation * glm::rotate(wheelRotateAngle, glm::vec3(0.0f, 0.0f, 1.0f))  * backWheelTranslationInverse * glm::scale(scaleVec);
+
+	
+
+}
+
 // function to render the scene
 static void render_scene()
 {
@@ -134,14 +229,25 @@ static void render_scene()
 	gShader.use();
 
 	glBindVertexArray(gVAO);
+
+	
+	gShader.setUniform("uModelMatrix", glm::mat4(1.0f));
+	glDrawArrays(GL_TRIANGLE_STRIP, 20, 4); // ground
+
 	// not for any particular reason
+	gShader.setUniform("uModelMatrix", gModelMatrix["Truck"]);
 	glDrawArrays(GL_TRIANGLE_STRIP, 0, 6); // front cabin
 	glDrawArrays(GL_TRIANGLE_FAN, 6, 4); // i used a fan here just to try out different types
-	glDrawArrays(GL_TRIANGLE_STRIP, 10, 6); // back tray
 	glDrawArrays(GL_TRIANGLE_STRIP, 16, 4); // truck base
-	glDrawArrays(GL_TRIANGLE_STRIP, 20, 4);
+
+	gShader.setUniform("uModelMatrix", gModelMatrix["Tray"]);
+	glDrawArrays(GL_TRIANGLE_STRIP, 10, 6); // back tray
+	
+
+	gShader.setUniform("uModelMatrix", gModelMatrix["FrontWheel"]);
 	glDrawArrays(GL_TRIANGLE_FAN, 24, SLICES + 2); // front tyre
 	glDrawArrays(GL_TRIANGLE_FAN, 58, SLICES + 2); // front rim
+	gShader.setUniform("uModelMatrix", gModelMatrix["BackWheel"]);
 	glDrawArrays(GL_TRIANGLE_FAN, 92, SLICES + 2); // back tyre
 	glDrawArrays(GL_TRIANGLE_FAN, 126, SLICES + 2); // back rim
 
@@ -149,10 +255,37 @@ static void render_scene()
 	glFlush();
 }
 
+//frame buffer callback function
+static void framebuffer_size_callback(GLFWwindow* window, int width, int height) {
+
+	gWindowWidth = width;
+	gWindowHeight = height;
+
+	glViewport(0, 0, gWindowWidth, gWindowHeight);
+
+	TwWindowSize(gWindowWidth, gWindowHeight);
+}
+
+// cursor movement callback function
+static void cursor_position_callback(GLFWwindow* window, double xpos, double ypos)
+{
+	// pass cursor position to tweak bar
+	TwEventMousePosGLFW(static_cast<int>(xpos), static_cast<int>(ypos));
+
+
+}
+
 // error callback function
 static void error_callback(int error, const char* description)
 {
 	std::cerr << description << std::endl;	// output error description
+}
+
+// mouse button callback function
+static void mouse_button_callback(GLFWwindow* window, int button, int action, int mods)
+{
+	// pass mouse button status to tweak bar
+	TwEventMouseButtonGLFW(button, action);
 }
 
 // key callback function
@@ -164,6 +297,28 @@ static void key_callback(GLFWwindow* window, int key, int scancode, int action, 
 		return;
 	}
 
+}
+
+
+// create and populate tweak bar elements
+TwBar* create_UI(const std::string name)
+{
+	// create a tweak bar
+	TwBar* twBar = TwNewBar(name.c_str());
+
+	TwWindowSize(gWindowWidth, gWindowHeight);
+	TwDefine(" TW_HELP visible=false "); // disable help menu
+	TwDefine(" GLOBAL fontsize=3 "); // set large font  size
+	TwDefine(" Main label='MyGUI' refresh=0.02 text=light size='220 320' ");
+	TwAddVarRO(twBar, "Frame Rate", TW_TYPE_FLOAT, &gFramerate, " group='Frame Stats' precision=2 ");
+	TwAddVarRO(twBar, "Frame Time", TW_TYPE_FLOAT, &gFrameTime, " group='Frame Stats' ");
+	TwAddVarRW(twBar, "Wireframe", TW_TYPE_BOOLCPP, &gWireFrame, " group='Display' "); // toggles wireframe mode
+	TwAddVarRW(twBar, "BgColour", TW_TYPE_COLOR3F, &gBackgroundColour, " label='Background Colour' group='Display' opened=true "); // updates bg colour
+	TwAddSeparator(twBar, nullptr, nullptr);
+
+	TwAddVarRW(twBar, "Rotate", TW_TYPE_FLOAT, &trayRotateAngleTwBar, " group='Rotation' min=0.0 max=45.0 step=1.0 "); // to update tray angle
+
+	return twBar;
 }
 
 int main(void)
@@ -211,14 +366,48 @@ int main(void)
 
 	// setting callback functions
 	glfwSetKeyCallback(window, key_callback);
+	glfwSetCursorPosCallback(window, cursor_position_callback);
+	glfwSetMouseButtonCallback(window, mouse_button_callback);
+	glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
+
+	// tweak bar setup
+	TwInit(TW_OPENGL_CORE, nullptr);
+	TwBar* tweakBar = create_UI("Main");
+
+	// timing data
+	double lastUpdateTime = glfwGetTime();	// last update time
+	double elapsedTime = lastUpdateTime;	// time since last update
+	int frameCount = 0;						// number of frames since last update
 
 	// the rendering loop
 	while (!glfwWindowShouldClose(window))
 	{
+		update_scene(window);
+
+		// changes wireframe mode if gWireFrame == true
+		if (gWireFrame) { glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);}
+
 		render_scene();		// render the scene
+
+		glPolygonMode(GL_FRONT_AND_BACK, GL_FILL); // changes write frame to FILL if !gWireFrame
+
+		TwDraw();
 
 		glfwSwapBuffers(window);	// swap buffers
 		glfwPollEvents();			// poll for events
+
+		frameCount++;
+		elapsedTime = glfwGetTime() - lastUpdateTime;	// time since last update
+
+		// if elapsed time since last update > 1 second
+		if (elapsedTime > 1.0)
+		{
+			gFrameTime = elapsedTime / frameCount;	// average time per frame
+			gFramerate = 1 / gFrameTime;			// frames per second
+			lastUpdateTime = glfwGetTime();			// set last update time to current time
+			frameCount = 0;							// reset frame counter
+		}
+
 	}
 
 	// close the window and terminate GLFW
@@ -360,7 +549,7 @@ void initialiseWheels() {
 	// 
 	// front tyre
 	// centre vertex
-	x = -0.265f;
+	x = -0.275f;
 	y = -0.525f;
 	vertices.push_back(x);
 	vertices.push_back(y);
@@ -370,11 +559,11 @@ void initialiseWheels() {
 	vertices.push_back(0.6f);
 	vertices.push_back(0.6f);
 
-	generate_circle(0.15f, gScaleFactor, vertices, x, y, false); // generates front tyre
+	generate_circle(0.12f, 1.0f, vertices, x, y, false); // generates front tyre
 
 	// front rim
 	// centre vertex
-	x = -0.265f;
+	x = -0.275f;
 	y = -0.525f;
 	vertices.push_back(x);
 	vertices.push_back(y);
@@ -384,7 +573,7 @@ void initialiseWheels() {
 	vertices.push_back(0.9f);
 	vertices.push_back(0.9f);
 
-	generate_circle(0.1f, gScaleFactor, vertices, x, y, true); // generates front rim
+	generate_circle(0.07f, 1.0f, vertices, x, y, true); // generates front rim
 
 	// back tyre
 	//
@@ -399,7 +588,7 @@ void initialiseWheels() {
 	vertices.push_back(0.6f);
 	vertices.push_back(0.6f);
 
-	generate_circle(0.15f, gScaleFactor, vertices, x, y, false); // generates back tyre
+	generate_circle(0.12f, 1.0f, vertices, x, y, false); // generates back tyre
 
 	// back rim 
 	//
@@ -414,6 +603,6 @@ void initialiseWheels() {
 	vertices.push_back(0.9f);
 	vertices.push_back(0.9f);
 
-	generate_circle(0.1f, gScaleFactor, vertices, x, y, true); // generates back tyre
+	generate_circle(0.07f, 1.0f, vertices, x, y, true); // generates back tyre
 
 }
