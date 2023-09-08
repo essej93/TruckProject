@@ -63,11 +63,6 @@ glm::vec3 gBackgroundColour(0.0f); // set background colour
 bool gWireFrame = false; // wireframe on/off
 
 
-/*
-QUESTIONS:
-- If using the gScaleFactor for generating a circle, how do we then make it so it doesn't stretch when it rotates?
-- Currently the way i rotate the wheels and tray is by moving it back to the origin point 0.0, 0.0, 0.0, rotating it, then moving it back; is there a better way to move it? meaning just moving it based on where it's located */
-
 // generate vertices for a circle based on a radius and number of slices
 void generate_circle(const float radius, const float scale_factor, std::vector<GLfloat>& vertices, float centreX, float centreY, bool isRim)
 {
@@ -234,16 +229,17 @@ static void render_scene()
 	gShader.setUniform("uModelMatrix", glm::mat4(1.0f));
 	glDrawArrays(GL_TRIANGLE_STRIP, 20, 4); // ground
 
-	// not for any particular reason
+	// truck base structure
 	gShader.setUniform("uModelMatrix", gModelMatrix["Truck"]);
 	glDrawArrays(GL_TRIANGLE_STRIP, 0, 6); // front cabin
-	glDrawArrays(GL_TRIANGLE_FAN, 6, 4); // i used a fan here just to try out different types
+	glDrawArrays(GL_TRIANGLE_FAN, 6, 4); // window -  i used a fan here just to try out different types
 	glDrawArrays(GL_TRIANGLE_STRIP, 16, 4); // truck base
 
+	// dump box
 	gShader.setUniform("uModelMatrix", gModelMatrix["Tray"]);
 	glDrawArrays(GL_TRIANGLE_STRIP, 10, 6); // back tray
 	
-
+	// wheels
 	gShader.setUniform("uModelMatrix", gModelMatrix["FrontWheel"]);
 	glDrawArrays(GL_TRIANGLE_FAN, 24, SLICES + 2); // front tyre
 	glDrawArrays(GL_TRIANGLE_FAN, 58, SLICES + 2); // front rim
@@ -316,7 +312,7 @@ TwBar* create_UI(const std::string name)
 	TwAddVarRW(twBar, "BgColour", TW_TYPE_COLOR3F, &gBackgroundColour, " label='Background Colour' group='Display' opened=true "); // updates bg colour
 	TwAddSeparator(twBar, nullptr, nullptr);
 
-	TwAddVarRW(twBar, "Rotate", TW_TYPE_FLOAT, &trayRotateAngleTwBar, " group='Rotation' min=0.0 max=45.0 step=1.0 "); // to update tray angle
+	TwAddVarRW(twBar, "Angle", TW_TYPE_FLOAT, &trayRotateAngleTwBar, " group='Tipper Angle' min=0.0 max=45.0 step=.1 "); // to update tray angle
 
 	return twBar;
 }
@@ -341,7 +337,7 @@ int main(void)
 	glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 
 	// create a window and its OpenGL context
-	window = glfwCreateWindow(gWindowWidth, gWindowHeight, "Lab 1", nullptr, nullptr);
+	window = glfwCreateWindow(gWindowWidth, gWindowHeight, "Assignment 1 - Truck", nullptr, nullptr);
 
 	// check if window created successfully
 	if (window == nullptr)
@@ -603,6 +599,6 @@ void initialiseWheels() {
 	vertices.push_back(0.9f);
 	vertices.push_back(0.9f);
 
-	generate_circle(0.07f, 1.0f, vertices, x, y, true); // generates back tyre
+	generate_circle(0.07f, 1.0f, vertices, x, y, true); // generates back rim
 
 }
